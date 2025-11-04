@@ -28,6 +28,13 @@ Represents a user entity in the system with properties for:
 - IsActive
 - Email
 
+#### Item.cs
+Represents an inventory item (used in the `items` table):
+- `Id` (int)
+- `Nombre` (string)
+- `Tipo` (string)
+- `CodigoSn` (string)
+
 ### 2. Data Layer
 Located in the `Data` namespace, handles database operations and connections.
 
@@ -38,7 +45,7 @@ Manages database connections and initialization with two main databases:
    - Connection string: `Data Source=(LocalDB)\MSSQLLocalDB;AttachDbFilename=|DataDirectory|\StockieUsers.mdf;Integrated Security=True`
 
 2. Stock Database (`StockieInventory.mdf`)
-   - Stores stock and calendar events information
+   - Stores stock, calendar events and items information
    - Connection string: `Data Source=(LocalDB)\MSSQLLocalDB;AttachDbFilename=|DataDirectory|\StockieInventory.mdf;Integrated Security=True`
 
 Key Methods:
@@ -47,7 +54,7 @@ Key Methods:
 - `TestConnection()`: Verifies database connectivity
 - `InitializeDatabase()`: Sets up both databases with required tables
 - `InitializeUsersDatabase()`: Creates users table and default users
-- `InitializeStockDatabase()`: Creates calendar_events table
+- `InitializeStockDatabase()`: Creates calendar_events and items tables
 
 Database Schema:
 
@@ -77,6 +84,17 @@ created_by INT,
 )
 ```
 
+3. Items Table (new)
+```sql
+CREATE TABLE items (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL,
+    tipo VARCHAR(50),
+    codigo_sn VARCHAR(100)
+)
+```
+Note: Management (create/delete/edit) of `items` is restricted to users with role `Administrator`. Regular users can view the items list but the UI disables modification actions for non-admins.
+
 ### 3. Services Layer
 Located in the `Services` namespace, contains business logic and data operations.
 
@@ -86,6 +104,12 @@ Handles user authentication and user-related operations:
   - Checks username and password against the database
   - Returns null if authentication fails
   - Returns User object with roles and permissions if successful
+
+#### ItemService.cs
+Provides basic CRUD operations for `items`:
+- `GetAllItems()`
+- `AddItem(Item item)` (admin-only in UI)
+- `DeleteItem(int id)` (admin-only in UI)
 
 ### 4. User Interface
 Windows Forms-based UI components.
@@ -102,21 +126,37 @@ Features:
 - Version display (current: V0.01)
 - Username and password input fields
 - Login button with validation
+- Pressing Enter triggers login (`AcceptButton` is set to the login button)
 - Error handling with user-friendly messages
+
+#### MainForm
+Opens after successful login. Key behaviors:
+- Window title: `Stockie` (displayed at top)
+- Left collapsible menu with the following items (left menu order):
+ - `Inventario`
+ - `Transferencias`
+ - `Envios`
+ - `Consulta de Stat`
+ - `Reportes`
+ - `Items` <-- appears above `Configuracion`
+ - `Configuracion`
+- Center area shows a single calendar control (`MonthCalendar`)
+- `Items` opens an `ItemsForm` which lists items from the `items` table; modification actions are enabled only for `Administrator` users.
 
 ## Technical Details
 
 ### Database Technology
 - Uses SQL Server LocalDB
 - Two separate database files:
-  - StockieUsers.mdf for user management
-  - StockieInventory.mdf for stock operations
+ - StockieUsers.mdf for user management
+ - StockieInventory.mdf for stock operations
+- The application sets `DataDirectory` to the application base directory and ensures an `App_Data` folder exists. Database files are created under `App_Data`.
 - Integrated Windows Authentication
 
 ### Security Features
-- Password storage (Note: Currently stored as plain text - should be enhanced with proper hashing)
+- Password storage: currently stored as plain text. This must be replaced by secure hashing (salted bcrypt/Argon2) in production.
 - Active/Inactive user status tracking
-- Role-based access control
+- Role-based access control (enforced in UI and services where applicable)
 - Unique username constraints
 
 ### Error Handling
@@ -125,21 +165,25 @@ Features:
 - Validation for empty username/password
 
 ### Default Users
-The system initializes with three default users:
+The system initializes with three default users. Note: role names must exactly match the `UserRole` enum values; see note after this list.
 1. Administrator
-   - Username: "admin"
-   - Password: "admin123"
-   - Email: "admin@stockie.com"
+ - Username: "admin"
+ - Password: "admin123"
+ - Email: "admin@stockie.com"
 
 2. Supervisor
-   - Username: "supervisor"
-   - Password: "supervisor123"
-   - Email: "supervisor@stockie.com"
+ - Username: "supervisor"
+ - Password: "supervisor123"
+ - Email: "supervisor@stockie.com"
 
 3. Operator
-   - Username: "operador"
-   - Password: "operador123"
-   - Email: "operador@stockie.com"
+ - Username: "operador"
+ - Password: "operador123"
+ - Email: "operador@stockie.com"
+
+NOTE: The `UserRole` enum uses English values (`Administrator`, `System`, `Operator`, `Supervisor`). The default user creation must use role strings that match these enum names exactly. In the current code the third default user has username `operador` and role string `Operador` (Spanish) — this mismatch can cause `Enum.Parse` to fail at runtime. Recommended fixes:
+- Change the default role string to `Operator` when inserting the default user, or
+- Change the `UserRole` enum to include `Operador` (not recommended).
 
 ## Future Improvements
 1. Implement password hashing for security
@@ -164,3 +208,9 @@ The project uses several NuGet packages:
 - Requires SQL Server LocalDB
 - Windows Forms application (WinForms)
 - Built using Visual Studio tooling
+
+## Troubleshooting / Notes
+- If LocalDB cannot create or attach `.mdf` files, check permissions for the `App_Data` directory and that LocalDB is installed.
+- The app sets `AppDomain.CurrentDomain.SetData("DataDirectory", baseDirectory)` and creates an `App_Data` folder under the app base path; database files are created there.
+- If you see `Enum.Parse` errors at login, verify default user `role` strings match `UserRole` enum values.
+- Use `Data.DatabaseHelper.TestConnection()` to validate connectivity programmatically.
